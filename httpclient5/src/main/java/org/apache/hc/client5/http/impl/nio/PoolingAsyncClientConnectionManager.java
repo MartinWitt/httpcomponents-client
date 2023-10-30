@@ -278,8 +278,8 @@ public class PoolingAsyncClientConnectionManager implements AsyncClientConnectio
                             if (poolEntry.hasConnection()) {
                                 final TimeValue timeToLive = connectionConfig.getTimeToLive();
                                 if (TimeValue.isNonNegative(timeToLive)) {
-                                    final Deadline deadline = Deadline.calculate(poolEntry.getCreated(), timeToLive);
-                                    if (deadline.isExpired()) {
+                                    if (timeToLive.getDuration() == 0
+                                            || Deadline.calculate(poolEntry.getCreated(), timeToLive).isExpired()) {
                                         poolEntry.discardConnection(CloseMode.GRACEFUL);
                                     }
                                 }
@@ -288,8 +288,8 @@ public class PoolingAsyncClientConnectionManager implements AsyncClientConnectio
                                 final ManagedAsyncClientConnection connection = poolEntry.getConnection();
                                 final TimeValue timeValue = connectionConfig.getValidateAfterInactivity();
                                 if (connection.isOpen() && TimeValue.isNonNegative(timeValue)) {
-                                    final Deadline deadline = Deadline.calculate(poolEntry.getUpdated(), timeValue);
-                                    if (deadline.isExpired()) {
+                                    if (timeValue.getDuration() == 0
+                                            || Deadline.calculate(poolEntry.getUpdated(), timeValue).isExpired()) {
                                         final ProtocolVersion protocolVersion = connection.getProtocolVersion();
                                         if (protocolVersion != null && protocolVersion.greaterEquals(HttpVersion.HTTP_2_0)) {
                                             connection.submitCommand(new PingCommand(new BasicPingHandler(result -> {
@@ -302,12 +302,11 @@ public class PoolingAsyncClientConnectionManager implements AsyncClientConnectio
                                                 leaseCompleted(poolEntry);
                                             })), Command.Priority.IMMEDIATE);
                                             return;
-                                        } else {
-                                            if (LOG.isDebugEnabled()) {
-                                                LOG.debug("{} connection {} is closed", id, ConnPoolSupport.getId(connection));
-                                            }
-                                            poolEntry.discardConnection(CloseMode.IMMEDIATE);
                                         }
+                                        if (LOG.isDebugEnabled()) {
+                                            LOG.debug("{} connection {} is closed", id, ConnPoolSupport.getId(connection));
+                                        }
+                                        poolEntry.discardConnection(CloseMode.IMMEDIATE);
                                     }
                                 }
                             }
@@ -464,7 +463,6 @@ public class PoolingAsyncClientConnectionManager implements AsyncClientConnectio
                             if (LOG.isDebugEnabled()) {
                                 LOG.debug("{} connected {}", ConnPoolSupport.getId(endpoint), ConnPoolSupport.getId(connection));
                             }
-                            final ProtocolVersion protocolVersion = connection.getProtocolVersion();
                             final Timeout socketTimeout = connectionConfig.getSocketTimeout();
                             if (socketTimeout != null) {
                                 connection.setSocketTimeout(socketTimeout);
@@ -670,7 +668,7 @@ public class PoolingAsyncClientConnectionManager implements AsyncClientConnectio
 
     private static final PrefixedIncrementingId INCREMENTING_ID = new PrefixedIncrementingId("ep-");
 
-    class InternalConnectionEndpoint extends AsyncConnectionEndpoint implements Identifiable {
+    static class InternalConnectionEndpoint extends AsyncConnectionEndpoint implements Identifiable {
 
         private final AtomicReference<PoolEntry<HttpRoute, ManagedAsyncClientConnection>> poolEntryRef;
         private final String id;

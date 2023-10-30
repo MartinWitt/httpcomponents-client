@@ -322,8 +322,8 @@ public class PoolingHttpClientConnectionManager
                     if (poolEntry.hasConnection()) {
                         final TimeValue timeToLive = connectionConfig.getTimeToLive();
                         if (TimeValue.isNonNegative(timeToLive)) {
-                            final Deadline deadline = Deadline.calculate(poolEntry.getCreated(), timeToLive);
-                            if (deadline.isExpired()) {
+                            if (timeToLive.getDuration() == 0
+                                    || Deadline.calculate(poolEntry.getCreated(), timeToLive).isExpired()) {
                                 poolEntry.discardConnection(CloseMode.GRACEFUL);
                             }
                         }
@@ -331,8 +331,8 @@ public class PoolingHttpClientConnectionManager
                     if (poolEntry.hasConnection()) {
                         final TimeValue timeValue = resolveValidateAfterInactivity(connectionConfig);
                         if (TimeValue.isNonNegative(timeValue)) {
-                            final Deadline deadline = Deadline.calculate(poolEntry.getUpdated(), timeValue);
-                            if (deadline.isExpired()) {
+                            if (timeValue.getDuration() == 0
+                                    || Deadline.calculate(poolEntry.getUpdated(), timeValue).isExpired()) {
                                 final ManagedHttpClientConnection conn = poolEntry.getConnection();
                                 boolean stale;
                                 try {
@@ -634,7 +634,7 @@ public class PoolingHttpClientConnectionManager
 
     private static final PrefixedIncrementingId INCREMENTING_ID = new PrefixedIncrementingId("ep-");
 
-    class InternalConnectionEndpoint extends ConnectionEndpoint implements Identifiable {
+    static class InternalConnectionEndpoint extends ConnectionEndpoint implements Identifiable {
 
         private final AtomicReference<PoolEntry<HttpRoute, ManagedHttpClientConnection>> poolEntryRef;
         private final String id;

@@ -24,44 +24,67 @@
  * <http://www.apache.org/>.
  *
  */
+package org.apache.hc.client5.http.auth;
 
-package org.apache.hc.client5.http.impl.win;
+import java.io.Serializable;
+import java.security.Principal;
+import java.util.Objects;
 
-import org.apache.hc.client5.http.auth.AuthScheme;
-import org.apache.hc.client5.http.auth.AuthSchemeFactory;
-import org.apache.hc.client5.http.auth.StandardAuthScheme;
 import org.apache.hc.core5.annotation.Contract;
-import org.apache.hc.core5.annotation.Experimental;
 import org.apache.hc.core5.annotation.ThreadingBehavior;
-import org.apache.hc.core5.http.protocol.HttpContext;
+import org.apache.hc.core5.util.Args;
 
 /**
- * {@link AuthSchemeFactory} implementation that creates and initializes
- * {@link WindowsNegotiateScheme} using JNA to Negotiate credentials
+ * Opaque token {@link Credentials} usually representing a set of claims, often encrypted
+ * or signed. The JWT (JSON Web Token) is among most widely used tokens used at the time
+ * of writing.
  *
- *  @since 4.4
+ * @since 5.3
  */
-@Contract(threading = ThreadingBehavior.STATELESS)
-@Experimental
-public class WindowsNegotiateSchemeFactory implements AuthSchemeFactory {
+@Contract(threading = ThreadingBehavior.IMMUTABLE)
+public class BearerToken implements Credentials, Serializable {
 
-    /**
-     * Singleton instance with a null name.
-     */
-    public static final WindowsNegotiateSchemeFactory DEFAULT = new WindowsNegotiateSchemeFactory(null);
+    private final String token;
 
-    private final String servicePrincipalName;
-
-    public WindowsNegotiateSchemeFactory(final String servicePrincipalName) {
+    public BearerToken(final String token) {
         super();
-        this.servicePrincipalName = servicePrincipalName;
+        this.token = Args.notBlank(token, "Token");
     }
 
     @Override
-    public AuthScheme create(final HttpContext context) {
-        return new WindowsNegotiateScheme(StandardAuthScheme.SPNEGO, servicePrincipalName);
+    public Principal getUserPrincipal() {
+        return null;
+    }
+
+    /**
+     * @deprecated Do not use.
+     */
+    @Deprecated
+    @Override
+    public char[] getPassword() {
+        return null;
+    }
+
+    public String getToken() {
+        return token;
+    }
+
+    @Override
+    public int hashCode() {
+        return token.hashCode();
+    }
+
+    @Override
+    public boolean equals(final Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o instanceof BearerToken) {
+            final BearerToken that = (BearerToken) o;
+            return Objects.equals(this.token, that.token);
+        }
+        return false;
     }
 
 }
-
 

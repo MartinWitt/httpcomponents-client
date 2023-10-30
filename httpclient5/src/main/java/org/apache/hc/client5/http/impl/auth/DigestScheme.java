@@ -53,6 +53,7 @@ import org.apache.hc.client5.http.auth.Credentials;
 import org.apache.hc.client5.http.auth.CredentialsProvider;
 import org.apache.hc.client5.http.auth.MalformedChallengeException;
 import org.apache.hc.client5.http.auth.StandardAuthScheme;
+import org.apache.hc.client5.http.auth.UsernamePasswordCredentials;
 import org.apache.hc.client5.http.protocol.HttpClientContext;
 import org.apache.hc.client5.http.utils.ByteArrayBuilder;
 import org.apache.hc.core5.annotation.Internal;
@@ -70,7 +71,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Digest authentication scheme as defined in RFC 2617.
+ * Digest authentication scheme.
  * Both MD5 (default) and MD5-sess are supported.
  * Currently only qop=auth or no qop is supported. qop=auth-int
  * is unsupported. If auth and auth-int are provided, auth is
@@ -118,8 +119,7 @@ public class DigestScheme implements AuthScheme, Serializable {
     private byte[] a1;
     private byte[] a2;
 
-    private String username;
-    private char[] password;
+    private UsernamePasswordCredentials credentials;
 
     public DigestScheme() {
         this(StandardCharsets.ISO_8859_1);
@@ -133,8 +133,9 @@ public class DigestScheme implements AuthScheme, Serializable {
 
     public void initPreemptive(final Credentials credentials, final String cnonce, final String realm) {
         Args.notNull(credentials, "Credentials");
-        this.username = credentials.getUserPrincipal().getName();
-        this.password = credentials.getPassword();
+        Args.check(credentials instanceof UsernamePasswordCredentials,
+                "Unsupported credential type: " + credentials.getClass());
+        this.credentials = (UsernamePasswordCredentials) credentials;
         this.paramMap.put("cnonce", cnonce);
         this.paramMap.put("realm", realm);
     }
@@ -190,9 +191,8 @@ public class DigestScheme implements AuthScheme, Serializable {
         final AuthScope authScope = new AuthScope(host, getRealm(), getName());
         final Credentials credentials = credentialsProvider.getCredentials(
                 authScope, context);
-        if (credentials != null) {
-            this.username = credentials.getUserPrincipal().getName();
-            this.password = credentials.getPassword();
+        if (credentials instanceof UsernamePasswordCredentials) {
+            this.credentials = (UsernamePasswordCredentials) credentials;
             return true;
         }
 
@@ -201,8 +201,7 @@ public class DigestScheme implements AuthScheme, Serializable {
             final String exchangeId = clientContext.getExchangeId();
             LOG.debug("{} No credentials found for auth scope [{}]", exchangeId, authScope);
         }
-        this.username = null;
-        this.password = null;
+        this.credentials = null;
         return false;
     }
 
@@ -239,17 +238,15 @@ public class DigestScheme implements AuthScheme, Serializable {
     }
 
     private String createDigestResponse(final HttpRequest request) throws AuthenticationException {
-
+        if (credentials == null) {
+            throw new AuthenticationException("User credentials have not been provided");
+        }
         final String uri = request.getRequestUri();
         final String method = request.getMethod();
         final String realm = this.paramMap.get("realm");
         final String nonce = this.paramMap.get("nonce");
         final String opaque = this.paramMap.get("opaque");
-        String algorithm = this.paramMap.get("algorithm");
-        // If an algorithm is not specified, default to MD5.
-        if (algorithm == null) {
-            algorithm = "MD5";
-        }
+        final String algorithm = this.paramMap.get("algorithm");
 
         final Set<String> qopset = new HashSet<>(8);
         QualityOfProtection qop = QualityOfProtection.UNKNOWN;
@@ -278,7 +275,8 @@ public class DigestScheme implements AuthScheme, Serializable {
 
         final Charset charset = AuthSchemeSupport.parseCharset(paramMap.get("charset"), defaultCharset);
         String digAlg = algorithm;
-        if (digAlg.equalsIgnoreCase("MD5-sess")) {
+        // If an algorithm is not specified, default to MD5.
+        if (digAlg == null || digAlg.equalsIgnoreCase("MD5-sess")) {
             digAlg = "MD5";
         }
 
@@ -317,19 +315,19 @@ public class DigestScheme implements AuthScheme, Serializable {
         a1 = null;
         a2 = null;
         // 3.2.2.2: Calculating digest
-        if (algorithm.equalsIgnoreCase("MD5-sess")) {
+        if ("MD5-sess".equalsIgnoreCase(algorithm)) {
             // H( unq(username-value) ":" unq(realm-value) ":" passwd )
             //      ":" unq(nonce-value)
             //      ":" unq(cnonce-value)
 
             // calculated one per session
-            buffer.append(username).append(":").append(realm).append(":").append(password);
+            buffer.append(credentials.getUserName()).append(":").append(realm).append(":").append(credentials.getUserPassword());
             final String checksum = formatHex(digester.digest(this.buffer.toByteArray()));
             buffer.reset();
             buffer.append(checksum).append(":").append(nonce).append(":").append(cnonce);
         } else {
             // unq(username-value) ":" unq(realm-value) ":" passwd
-            buffer.append(username).append(":").append(realm).append(":").append(password);
+            buffer.append(credentials.getUserName()).append(":").append(realm).append(":").append(credentials.getUserPassword());
         }
         a1 = buffer.toByteArray();
 
@@ -390,7 +388,7 @@ public class DigestScheme implements AuthScheme, Serializable {
         buffer.append(StandardAuthScheme.DIGEST + " ");
 
         final List<BasicNameValuePair> params = new ArrayList<>(20);
-        params.add(new BasicNameValuePair("username", username));
+        params.add(new BasicNameValuePair("username", credentials.getUserName()));
         params.add(new BasicNameValuePair("realm", realm));
         params.add(new BasicNameValuePair("nonce", nonce));
         params.add(new BasicNameValuePair("uri", uri));
@@ -401,8 +399,9 @@ public class DigestScheme implements AuthScheme, Serializable {
             params.add(new BasicNameValuePair("nc", nc));
             params.add(new BasicNameValuePair("cnonce", cnonce));
         }
-        // algorithm cannot be null here
-        params.add(new BasicNameValuePair("algorithm", algorithm));
+        if (algorithm != null) {
+            params.add(new BasicNameValuePair("algorithm", algorithm));
+        }
         if (opaque != null) {
             params.add(new BasicNameValuePair("opaque", opaque));
         }
@@ -444,8 +443,7 @@ public class DigestScheme implements AuthScheme, Serializable {
     }
 
     /**
-     * Encodes the 128 bit (16 bytes) MD5 digest into a 32 characters long
-     * {@code String} according to RFC 2617.
+     * Encodes the 128 bit (16 bytes) MD5 digest into a 32 characters long string.
      *
      * @param binaryData array containing the digest
      * @return encoded MD5, or {@code null} if encoding failed

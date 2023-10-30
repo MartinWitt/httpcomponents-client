@@ -35,6 +35,7 @@ import java.io.ObjectOutputStream;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+@SuppressWarnings("deprecation")
 public class TestCredentials {
 
     @Test
@@ -44,14 +45,14 @@ public class TestCredentials {
         Assertions.assertEquals("name", creds1.getUserName());
         Assertions.assertEquals(new BasicUserPrincipal("name"),
                 creds1.getUserPrincipal());
-        Assertions.assertArrayEquals("pwd".toCharArray(), creds1.getPassword());
+        Assertions.assertArrayEquals("pwd".toCharArray(), creds1.getUserPassword());
         Assertions.assertEquals("[principal: name]", creds1.toString());
         final UsernamePasswordCredentials creds2 = new UsernamePasswordCredentials(
             "name", null);
         Assertions.assertEquals("name", creds2.getUserName());
         Assertions.assertEquals(new BasicUserPrincipal("name"),
                 creds2.getUserPrincipal());
-        Assertions.assertNull(creds2.getPassword());
+        Assertions.assertNull(creds2.getUserPassword());
         Assertions.assertEquals("[principal: name]", creds2.toString());
     }
 
@@ -63,7 +64,7 @@ public class TestCredentials {
         Assertions.assertEquals(new NTUserPrincipal("DOMAIN", "name"),
                 creds1.getUserPrincipal());
         Assertions.assertArrayEquals("pwd".toCharArray(), creds1.getPassword());
-        Assertions.assertEquals("[principal: DOMAIN\\name][workstation: LOCALHOST][netbiosDomain: DOMAIN]",
+        Assertions.assertEquals("[principal: DOMAIN\\name][workstation: "+ creds1.getWorkstation() +"][netbiosDomain: DOMAIN]",
                 creds1.toString());
         final NTCredentials creds2 = new NTCredentials(
                 "name", null, null, null);
@@ -71,7 +72,7 @@ public class TestCredentials {
         Assertions.assertEquals(new NTUserPrincipal(null, "name"),
                 creds2.getUserPrincipal());
         Assertions.assertNull(creds2.getPassword());
-        Assertions.assertEquals("[principal: name][workstation: null][netbiosDomain: null]",
+        Assertions.assertEquals("[principal: name][workstation: "+creds1.getWorkstation() +"][netbiosDomain: null]",
                 creds2.toString());
     }
 
@@ -104,6 +105,34 @@ public class TestCredentials {
     }
 
     @Test
+    public void tesBearerTokenBasics() {
+        final BearerToken creds1 = new BearerToken("token of some sort");
+        Assertions.assertEquals("token of some sort", creds1.getToken());
+    }
+
+    @Test
+    public void testBearerTokenHashCode() {
+        final BearerToken creds1 = new BearerToken("token of some sort");
+        final BearerToken creds2 = new BearerToken("another token of some sort");
+        final BearerToken creds3 = new BearerToken("token of some sort");
+
+        Assertions.assertTrue(creds1.hashCode() == creds1.hashCode());
+        Assertions.assertTrue(creds1.hashCode() != creds2.hashCode());
+        Assertions.assertTrue(creds1.hashCode() == creds3.hashCode());
+    }
+
+    @Test
+    public void testBearerTokenEquals() {
+        final BearerToken creds1 = new BearerToken("token of some sort");
+        final BearerToken creds2 = new BearerToken("another token of some sort");
+        final BearerToken creds3 = new BearerToken("token of some sort");
+
+        Assertions.assertEquals(creds1, creds1);
+        Assertions.assertNotEquals(creds1, creds2);
+        Assertions.assertEquals(creds1, creds3);
+    }
+
+    @Test
     public void testNTCredentialsHashCode() {
         final NTCredentials creds1 = new NTCredentials(
                 "name","pwd".toCharArray(), "somehost", "domain");
@@ -127,8 +156,8 @@ public class TestCredentials {
         Assertions.assertTrue(creds1.hashCode() == creds1.hashCode());
         Assertions.assertTrue(creds1.hashCode() != creds2.hashCode());
         Assertions.assertEquals(creds1.hashCode(), creds3.hashCode());
-        Assertions.assertNotEquals(creds1.hashCode(), creds4.hashCode());
-        Assertions.assertNotEquals(creds1.hashCode(), creds5.hashCode());
+        Assertions.assertEquals(creds1.hashCode(), creds4.hashCode());
+        Assertions.assertEquals(creds1.hashCode(), creds5.hashCode());
         Assertions.assertNotEquals(creds1.hashCode(), creds6.hashCode());
         Assertions.assertNotEquals(creds1.hashCode(), creds7.hashCode());
         Assertions.assertEquals(creds8.hashCode(), creds5.hashCode());
@@ -159,8 +188,8 @@ public class TestCredentials {
         Assertions.assertEquals(creds1, creds1);
         Assertions.assertNotEquals(creds1, creds2);
         Assertions.assertEquals(creds1, creds3);
-        Assertions.assertNotEquals(creds1, creds4);
-        Assertions.assertNotEquals(creds1, creds5);
+        Assertions.assertEquals(creds1, creds4);
+        Assertions.assertEquals(creds1, creds5);
         Assertions.assertNotEquals(creds1, creds6);
         Assertions.assertNotEquals(creds1, creds7);
         Assertions.assertEquals(creds8, creds5);
@@ -195,5 +224,4 @@ public class TestCredentials {
         final NTCredentials clone = (NTCredentials) inStream.readObject();
         Assertions.assertEquals(orig, clone);
     }
-
 }

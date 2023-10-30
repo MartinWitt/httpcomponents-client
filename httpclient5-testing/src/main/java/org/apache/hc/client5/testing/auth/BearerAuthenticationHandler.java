@@ -24,25 +24,21 @@
  * <http://www.apache.org/>.
  *
  */
-package org.apache.hc.client5.http.impl.win;
 
-import com.sun.jna.platform.win32.Sspi;
-import com.sun.jna.platform.win32.Win32Exception;
-import com.sun.jna.platform.win32.WinError;
+package org.apache.hc.client5.testing.auth;
 
-public final class WindowsNegotiateSchemeGetTokenFail extends WindowsNegotiateScheme {
+import org.apache.hc.client5.http.auth.StandardAuthScheme;
 
-    public WindowsNegotiateSchemeGetTokenFail(final String schemeName, final String servicePrincipalName) {
-        super(schemeName, servicePrincipalName);
+public class BearerAuthenticationHandler extends AbstractAuthenticationHandler {
+
+    @Override
+    String getSchemeName() {
+        return StandardAuthScheme.BEARER;
     }
 
     @Override
-    String getToken(final Sspi.CtxtHandle continueCtx, final Sspi.SecBufferDesc continueToken, final String targetName) {
-        dispose();
-        /* We will rather throw SEC_E_TARGET_UNKNOWN because SEC_E_DOWNGRADE_DETECTED is not
-         * available on Windows XP and this unit test always fails.
-         */
-        throw new Win32Exception(WinError.SEC_E_TARGET_UNKNOWN);
+    String decodeChallenge(final String challenge) {
+        return challenge;
     }
 
 }

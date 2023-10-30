@@ -29,11 +29,15 @@ package org.apache.hc.client5.testing.auth;
 
 import java.nio.charset.StandardCharsets;
 
-import org.apache.hc.client5.http.utils.Base64;
 import org.apache.hc.client5.http.auth.StandardAuthScheme;
+import org.apache.hc.client5.http.utils.Base64;
 import org.apache.hc.core5.http.HttpException;
 import org.apache.hc.core5.http.ProtocolException;
 
+/**
+ * @deprecated Use {@link BasicAuthenticationHandler}.
+ */
+@Deprecated
 public class BasicAuthTokenExtractor {
 
     public String extract(final String challengeResponse) throws HttpException {

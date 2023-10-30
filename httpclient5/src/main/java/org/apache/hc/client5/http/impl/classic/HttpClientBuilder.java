@@ -29,6 +29,8 @@ package org.apache.hc.client5.http.impl.classic;
 
 import java.io.Closeable;
 import java.net.ProxySelector;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -65,10 +67,8 @@ import org.apache.hc.client5.http.impl.IdleConnectionEvictor;
 import org.apache.hc.client5.http.impl.NoopUserTokenHandler;
 import org.apache.hc.client5.http.impl.auth.BasicCredentialsProvider;
 import org.apache.hc.client5.http.impl.auth.BasicSchemeFactory;
+import org.apache.hc.client5.http.impl.auth.BearerSchemeFactory;
 import org.apache.hc.client5.http.impl.auth.DigestSchemeFactory;
-import org.apache.hc.client5.http.impl.auth.KerberosSchemeFactory;
-import org.apache.hc.client5.http.impl.auth.NTLMSchemeFactory;
-import org.apache.hc.client5.http.impl.auth.SPNegoSchemeFactory;
 import org.apache.hc.client5.http.impl.auth.SystemDefaultCredentialsProvider;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.apache.hc.client5.http.impl.routing.DefaultProxyRoutePlanner;
@@ -225,6 +225,7 @@ public class HttpClientBuilder {
     private boolean authCachingDisabled;
     private boolean connectionStateDisabled;
     private boolean defaultUserAgentDisabled;
+    private ProxySelector proxySelector;
 
     private List<Closeable> closeables;
 
@@ -701,6 +702,20 @@ public class HttpClientBuilder {
     }
 
     /**
+     * Sets the {@link java.net.ProxySelector} that will be used to select the proxies
+     * to be used for establishing HTTP connections. If a non-null proxy selector is set,
+     * it will take precedence over the proxy settings configured in the client.
+     *
+     * @param proxySelector the {@link java.net.ProxySelector} to be used, or null to use
+     *                      the default system proxy selector.
+     * @return this {@link HttpClientBuilder} instance, to allow for method chaining.
+     */
+    public final HttpClientBuilder setProxySelector(final ProxySelector proxySelector) {
+        this.proxySelector = proxySelector;
+        return this;
+    }
+
+    /**
      * Request exec chain customization and extension.
      * <p>
      * For internal use.
@@ -866,9 +881,11 @@ public class HttpClientBuilder {
             }
             if (proxy != null) {
                 routePlannerCopy = new DefaultProxyRoutePlanner(proxy, schemePortResolverCopy);
+            } else if (this.proxySelector != null) {
+                routePlannerCopy = new SystemDefaultRoutePlanner(schemePortResolverCopy, this.proxySelector);
             } else if (systemProperties) {
-                routePlannerCopy = new SystemDefaultRoutePlanner(
-                        schemePortResolverCopy, ProxySelector.getDefault());
+                final ProxySelector defaultProxySelector = AccessController.doPrivileged((PrivilegedAction<ProxySelector>) ProxySelector::getDefault);
+                routePlannerCopy = new SystemDefaultRoutePlanner(schemePortResolverCopy, defaultProxySelector);
             } else {
                 routePlannerCopy = new DefaultRoutePlanner(schemePortResolverCopy);
             }
@@ -945,9 +962,7 @@ public class HttpClientBuilder {
             authSchemeRegistryCopy = RegistryBuilder.<AuthSchemeFactory>create()
                 .register(StandardAuthScheme.BASIC, BasicSchemeFactory.INSTANCE)
                 .register(StandardAuthScheme.DIGEST, DigestSchemeFactory.INSTANCE)
-                .register(StandardAuthScheme.NTLM, NTLMSchemeFactory.INSTANCE)
-                .register(StandardAuthScheme.SPNEGO, SPNegoSchemeFactory.DEFAULT)
-                .register(StandardAuthScheme.KERBEROS, KerberosSchemeFactory.DEFAULT)
+                .register(StandardAuthScheme.BEARER, BearerSchemeFactory.INSTANCE)
                 .build();
         }
         Lookup<CookieSpecFactory> cookieSpecRegistryCopy = this.cookieSpecRegistry;

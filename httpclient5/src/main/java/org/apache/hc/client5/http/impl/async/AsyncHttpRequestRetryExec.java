@@ -33,6 +33,7 @@ import org.apache.hc.client5.http.HttpRoute;
 import org.apache.hc.client5.http.async.AsyncExecCallback;
 import org.apache.hc.client5.http.async.AsyncExecChain;
 import org.apache.hc.client5.http.async.AsyncExecChainHandler;
+import org.apache.hc.client5.http.impl.ChainElement;
 import org.apache.hc.client5.http.protocol.HttpClientContext;
 import org.apache.hc.core5.annotation.Contract;
 import org.apache.hc.core5.annotation.Internal;
@@ -60,6 +61,22 @@ import org.slf4j.LoggerFactory;
  * Further responsibilities such as communication with the opposite
  * endpoint is delegated to the next executor in the request execution
  * chain.
+ * </p>
+ * <p>
+ * If this handler is active, pay particular attention to the placement
+ * of other handlers within the handler chain relative to the retry handler.
+ * Use {@link ChainElement#RETRY} as name when referring to this handler.
+ * </p>
+ * <p>
+ * If a custom handler is placed <b>before</b> the retry handler, the handler will
+ * see the initial request and the final outcome after the last retry. Elapsed time
+ * will account for any delays imposed by the retry handler.
+ * </p>
+ *
+ * <p>
+ * A custom handler which is placed <b>after</b> the retry handler will be invoked for
+ * each individual retry. Elapsed time will measure each individual http request,
+ * without the delay imposed by the retry handler.
  * </p>
  *
  * @since 5.0
@@ -131,7 +148,13 @@ public final class AsyncHttpRequestRetryExec implements AsyncExecChainHandler {
                     if (entityProducer != null) {
                        entityProducer.releaseResources();
                     }
-                    scope.scheduler.scheduleExecution(request, entityProducer, scope, asyncExecCallback, state.delay);
+                    scope.scheduler.scheduleExecution(
+                            request,
+                            entityProducer,
+                            scope,
+                            (r, e, s, c) -> execute(r, e, s, chain, c),
+                            asyncExecCallback,
+                            state.delay);
                 } else {
                     asyncExecCallback.completed();
                 }
@@ -161,7 +184,13 @@ public final class AsyncHttpRequestRetryExec implements AsyncExecChainHandler {
                         state.retrying = true;
                         final int execCount = scope.execCount.incrementAndGet();
                         state.delay = retryStrategy.getRetryInterval(request, (IOException) cause, execCount - 1, clientContext);
-                        scope.scheduler.scheduleExecution(request, entityProducer, scope, asyncExecCallback, state.delay);
+                        scope.scheduler.scheduleExecution(
+                                request,
+                                entityProducer,
+                                scope,
+                                (r, e, s, c) -> execute(r, e, s, chain, c),
+                                asyncExecCallback,
+                                state.delay);
                         return;
                     }
                 }
